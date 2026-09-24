@@ -45,15 +45,12 @@ is_core="xray"
 conf_dir="/usr/local/etc/xray"
 config_path="${conf_dir}/config.json"
 PRESET_DOMAIN="" #如果为空，安装过程中手动输入
-XRAY_VERSION="26.5.3"   #最新版 latest
+XRAY_VERSION="26.3.27"   #最新版 latest
 CADDY_VERSION="2.11.4"
 FIX_VER=1 #1，锁定。0，最新版#
 
 # Reality 伪装域名配置（随机选择）
 REALITY_DEST_OPTIONS=(
-    "www.microsoft.com"          # 微软，极稳定
-    "www.apple.com"              # 苹果，极稳定
-    "www.bing.com"               # 微软搜索，直连很好
     "www.cloudflare.com"         # Cloudflare
     "www.amazon.com"             # 亚马逊
     "www.adobe.com"              # Adobe
@@ -75,6 +72,7 @@ check_root() {
         exit 1
     fi
 }
+
 # 自定义函数：错误信息检查（519修改）
 check_command() {
     local cmd=("$@")
@@ -112,6 +110,7 @@ get_local_ip() {
             return 0
         fi
     done
+    
     # 都失败，尝试从本地网络获取
     local_ip=$(hostname -I | awk '{print $1}')
     if [[ -n "$local_ip" ]]; then
@@ -1561,65 +1560,33 @@ EOF
 
 show_usage() {
     echo -e "${MAGENTA}--- 流量统计看板 ---${NC}"
-    
+
+    # 先检测出口网卡名称
+    local interface=$(ip route get 8.8.8.8 2>/dev/null | grep -Po '(?<=dev )(\S+)' | head -1)
+    if [ -z "$interface" ]; then
+        interface=$(ls /sys/class/net | grep -v lo | head -1)
+    fi
+    echo -e "${CYAN}>>> 检测到出口网卡: ${interface}${NC}"
+
     if ! command -v vnstat &> /dev/null; then
         echo -e "${YELLOW}检测到 vnstat 未安装，正在尝试安装...${NC}"
         apt-get update && apt-get install -y vnstat
         systemctl enable vnstat --now
     fi
 
+    # 将网卡名称写入 vnstat.conf
+    if [ -f "/etc/vnstat.conf" ]; then
+        sed -i "s/^Interface .*/Interface \"$interface\"/" /etc/vnstat.conf
+        echo -e "${GREEN}已将网卡 ${interface} 写入 vnstat.conf${NC}"
+    fi
+    vnstat -u -i "$interface" >/dev/null 2>&1
+    systemctl restart vnstat >/dev/null 2>&1
+
     if command -v vnstat &> /dev/null; then
-        # ==================== 自动获取网络接口 ====================
-        echo -e "${CYAN}正在自动检测主网络接口...${NC}"
-        
-        # 优先使用 ip 命令获取默认路由接口（最准确）
-        INTERFACE=$(ip -o route show default | awk '{print $5}' | head -n1)
-        
-        # 如果上面没获取到，尝试其他方法
-        if [[ -z "$INTERFACE" ]]; then
-            INTERFACE=$(ls /sys/class/net/ | grep -v lo | head -n1)
-        fi
-
-        if [[ -z "$INTERFACE" ]]; then
-            echo -e "${RED}错误: 无法自动检测网络接口${NC}"
-            read -r -p "按回车键返回主菜单"
-            return 1
-        fi
-
-        echo -e "${GREEN}检测到主网络接口: ${INTERFACE}${NC}"
-
-        # ==================== 更新 vnstat 配置 ====================
-        CONF="/etc/vnstat.conf"
-        if [[ -f "$CONF" ]]; then
-            # 备份原配置
-            cp "$CONF" "${CONF}.bak.$(date +%F_%H-%M-%S)"
-            
-            # 修改 Interface 行（支持带引号和不带引号的情况）
-            if grep -q "^Interface" "$CONF"; then
-                sed -i "s|^Interface.*|Interface \"${INTERFACE}\"|" "$CONF"
-            else
-                # 如果没有 Interface 行，则添加
-                echo "Interface \"${INTERFACE}\"" >> "$CONF"
-            fi
-            
-            echo -e "${GREEN}已将 vnstat 接口更新为: ${INTERFACE}${NC}"
-        else
-            echo -e "${YELLOW}警告: ${CONF} 不存在${NC}"
-        fi
-
-        # 重启 vnstat 服务使配置生效
-        systemctl restart vnstat
-        sleep 1
-
-        # 显示流量统计
-        echo -e "\n${MAGENTA}=== 今日流量 ===${NC}"
-        vnstat -d
-        echo -e "\n${MAGENTA}=== 本月流量 ===${NC}"
-        vnstat -m
+        vnstat -d && vnstat -m
     else
         echo -e "${RED}错误: vnstat 不可用。${NC}"
     fi
-
     read -r -p "按回车键返回主菜单"
 }
 
@@ -1692,9 +1659,9 @@ uninstall_all() {
 show_status() {
     OS_NAME=$(grep "PRETTY_NAME" /etc/os-release | cut -d '"' -f 2 2>/dev/null || echo "Linux")
     echo -e "${RED}====================== 脚本环境信息 =======================${NC}"
-    echo -e "${RED}   作者：${NC}${BLUE}人生若只如初见，更新：2026/06/06   ${NC}"
+    echo -e "${RED}   作者：${NC}${BLUE}人生若只如初见，更新：2026/09/25   ${NC}"
     echo -e "${RED}   名称：${NC}${BLUE}xray 一键安装脚本    ${NC}"
-    echo -e "${RED}   版本号：${NC}${BLUE}v1.0.06.06.11.56（Release）    ${NC}"
+    echo -e "${RED}   版本号：${NC}${BLUE}v1.0.26.09.25（Release）    ${NC}"
     echo -e "${RED}   适用环境：${NC}${BLUE}Debian12/13、Ubuntu25/26    ${NC}"
     echo -e "${RED}   当前系统：${NC}${GREEN}$OS_NAME    ${NC}"
 
@@ -1790,7 +1757,7 @@ show_menu() {
     echo -e "-----------------------------------------------------------"
     echo -e "${BLUE}  【1】 . 安装 VLESS-REALITY-Vision${NC}   ${RED}【推荐，最强隐蔽/不依赖域名】${NC}"
     echo -e "${BLUE}  【2】 . 安装 VLESS-REALITY-xhttp${NC}    ${CYAN}【最新黑科技/综合最强】${NC}"   
-    echo -e "${BLUE}  【3】 . 安装 VLESS-WS-TLS${NC}           ${RED}【推荐，需要域名/CDN兼容/标准WebSocket】${NC}"
+    echo -e "${BLUE}  【3】 . 安装 VLESS-WS-TLS${NC}           ${CYAN}【CDN兼容/标准WebSocket】${NC}"
     echo -e "${BLUE}  【4】 . 安装 VLESS-gRPC-TLS${NC}         ${CYAN}【低延迟/多路复用】${NC}"
     echo -e "${BLUE}  【5】 . 安装 VLESS-XHTTP-TLS${NC}        ${CYAN}【流式传输/防指纹】${NC}"
     echo -e "${BLUE}  【6】 . 安装 Trojan-WS-TLS${NC}          ${CYAN}【仿HTTPS/老牌稳定】${NC}"
