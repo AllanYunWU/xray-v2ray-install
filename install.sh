@@ -1560,11 +1560,28 @@ EOF
 
 show_usage() {
     echo -e "${MAGENTA}--- 流量统计看板 ---${NC}"
+
+    # 先检测出口网卡名称
+    local interface=$(ip route get 8.8.8.8 2>/dev/null | grep -Po '(?<=dev )(\S+)' | head -1)
+    if [ -z "$interface" ]; then
+        interface=$(ls /sys/class/net | grep -v lo | head -1)
+    fi
+    echo -e "${CYAN}>>> 检测到出口网卡: ${interface}${NC}"
+
     if ! command -v vnstat &> /dev/null; then
         echo -e "${YELLOW}检测到 vnstat 未安装，正在尝试安装...${NC}"
         apt-get update && apt-get install -y vnstat
         systemctl enable vnstat --now
     fi
+
+    # 将网卡名称写入 vnstat.conf
+    if [ -f "/etc/vnstat.conf" ]; then
+        sed -i "s/^Interface .*/Interface \"$interface\"/" /etc/vnstat.conf
+        echo -e "${GREEN}已将网卡 ${interface} 写入 vnstat.conf${NC}"
+    fi
+    vnstat -u -i "$interface" >/dev/null 2>&1
+    systemctl restart vnstat >/dev/null 2>&1
+
     if command -v vnstat &> /dev/null; then
         vnstat -d && vnstat -m
     else
