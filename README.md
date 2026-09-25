@@ -1,3 +1,18 @@
+## Notes
+2026/09/25
+- forked from linuxhobby/xray-v2ray-install
+- 更新了dependencies和ipv6 timeout的问题，dig加上了尝试次数，避免卡死
+- CaddyFile一个同时处理反代和回落的example
+- install instructions:
+```
+apt update && apt install wget curl -y
+```
+```
+wget -N https://raw.githubusercontent.com/AllanYunWu/xray-v2ray-install/main/install.sh && chmod +x install.sh && ./install.sh
+```
+
+以下是原作者readme
+-----------------------
 *最后更新：2026-09-25*
 - 2026/05/01：新增域名检测、信息查询功能；增加二维码展示功能。
 - 2026/05/05：修复Trojan协议的二维码；修复caddy检查安装。增加VLESS-REALITY-xhttp协议。

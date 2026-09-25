@@ -1,0 +1,28 @@
+yoursite.com {
+    tls {
+        protocols tls1.2 tls1.3
+    }
+    
+    # 定义匹配器：以 /your-path 开头的所有路径
+    @xhttp {
+        path /your-path
+        path /your-path*
+    }
+
+    # 匹配到 /your-path* 就反向代理
+    handle @xhttp {
+        reverse_proxy 127.0.0.1:10003 {
+            transport http {
+                versions h2c
+            }
+            flush_interval -1
+        }
+    }
+
+    # 其余全部路径（包括首页 /）写你自己的逻辑，这里以静态网页为例
+    handle {
+        root * /var/www/html
+        file_server
+        encode gzip
+    }
+}

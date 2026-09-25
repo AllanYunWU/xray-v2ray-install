@@ -267,7 +267,7 @@ check_dependencies() {
     echo -e "${CYAN}>>> 检查系统依赖...${NC}"
     
     # 基础依赖
-    local base_deps=(curl openssl wget tar unzip)
+    local base_deps=(curl openssl wget tar unzip dnsutils)
     
     # 可选依赖
     local optional_deps=(qrencode vnstat gnupg2)
@@ -647,10 +647,13 @@ check_domain() {
         local_ipv4=$(get_local_ip)
         
         local local_ipv6
-        local_ipv6=$(curl -6 -s --connect-timeout 5 ip.sb || echo "")
+        local_ipv6=$(curl -6 -s --connect-timeout 3 --max-time 5 ip.sb || echo "")
         
-        local resolved_ips
-        resolved_ips=$(dig +short "$domain" A 2>/dev/null)
+        local resolved_ips=""
+        if command -v dig &>/dev/null; then
+            resolved_ips=$(dig +short +time=2 +tries=1 "$domain" A 2>/dev/null)
+        fi
+        
         if [[ -z "$local_ipv4" ]]; then
             echo -e "${RED}[ERROR] 获取本机 IP 失败${NC}"
             exit 1
